@@ -1,0 +1,172 @@
+#!/bin/bash
+
+SSH_DIR=$HOME/.ssh
+AUTH_KEYS_DIR=${SSH_DIR}/authorized_keys.d
+AUTH_KEYS_FILE=${SSH_DIR}/authorized_keys
+
+# Utils
+
+key-path() {
+  echo "${AUTH_KEYS_DIR}/${1}"
+}
+
+update-auth-keys() {
+  # Let's empty the main file
+  echo "" > ${AUTH_KEYS_FILE}
+
+  # Check if any opt file exists
+  count=$(ls -1 ${AUTH_KEYS_DIR}/*.opt 2>/dev/null | wc -l)
+  if [ $count != 0 ];
+  then
+	  for flag in $(ls ${AUTH_KEYS_DIR}/*.opt);
+	  do
+		  echo $(<$flag);
+		  echo ${flag%.opt};
+		  if [ $(<$flag) == "1" ];
+		  then
+			  echo "it is on"
+			  # So, let's add it to the main file
+			  cat ${flag%.opt} >> ${AUTH_KEYS_FILE}
+		  else
+			  # So, we ignore it.
+			  echo "it is off"
+		  fi
+	  done;
+  else
+	  echo "No keys found"
+  fi
+}
+
+log() {
+  echo $@ >&2
+}
+
+# Commands
+
+cmd:add() {
+  if [ -z "$1" ]
+  then
+    log "Key name is required"
+    exit 1
+  fi
+  local KEY=`key-path $1`
+  if [ -f "$KEY" ]
+  then
+    log "Key '$1' already exists"
+    exit 1
+  fi
+  # Determine is there a STDIN input or not.
+  if [ -t 0 -a -t 1 ]
+  then
+    # Use default editor to edit key
+    editor $KEY
+  else
+    cat /dev/stdin > $KEY
+  fi
+  echo "0" > $KEY.opt
+  echo "Created ${KEY}, you need to enable it"
+  update-auth-keys
+}
+
+cmd:edit() {
+  if [ -z "$1" ]
+  then
+    log "Key name is required"
+    exit 1
+  fi
+  local KEY=`key-path $1`
+  # Determine is there a STDIN input or not.
+  if [ -t 0 -a -t 1 ]
+  then
+    # Use default editor to edit key
+    editor $KEY
+  else
+    cat /dev/stdin > $KEY
+  fi
+  update-auth-keys
+}
+
+cmd:remove() {
+  if [ -z "$1" ]
+  then
+    log "Key name is required"
+    exit 1
+  fi
+  local KEY=`key-path $1`
+  if [ -f "$KEY" ]
+  then
+    rm "$KEY"
+    update-auth-keys
+  fi
+}
+
+cmd:has() {
+  local KEY=`key-path $1`
+
+  if [ -f "$KEY" ]
+  then
+    exit 0
+  else
+    exit 1
+  fi
+}
+
+cmd:enable() {
+  local KEY=`key-path $1`
+
+  echo $KEY
+
+  if test -f "$KEY";
+  then
+    echo "1" > $KEY.opt
+    update-auth-keys
+  else
+    echo "Doesn't exist."
+  fi
+}
+
+cmd:disable() {
+  local KEY=`key-path $1`
+
+  if [ -f "$KEY" ]
+  then
+    echo "0" > $KEY.opt
+    update-auth-keys
+  else
+    echo "Doesn't exist."
+  fi
+}
+
+cmd:list() {
+  # Ignore opt files
+  for KEY in `ls -I "*.opt" $AUTH_KEYS_DIR`
+  do
+    echo $KEY
+  done
+}
+
+cmd:help() {
+  log "Usage is:"
+  log "  add <key> - Add key"
+  log "  enable <key> - Enable key"
+  log "  disable <key> - Disable key"
+  log "  edit <key> - Edit existing key"
+  log "  remove <key> - Remove key"
+  log "  has <key> - Determine if key exists"
+  log "  list - List keys"
+  log "  help - Output this message"
+}
+
+cmd:test() {
+ update-auth-keys
+}
+
+case $1 in
+  add|edit|remove|has|list|enable|disable|test|help)
+    cmd:$@
+    ;;
+  *)
+    cmd:help
+    exit 1
+    ;;
+esac
